@@ -183,31 +183,33 @@ if (is_array($aConfig)) {
                 }
             }
             
-            // $aCase_IDs[ish_id][case_id]['record'] => [record_id]
-            // $aCase_IDs[ish_id][case_id]['event'] => [event]
-            if (isset($aProjConfig['case_id']) && strlen($aProjConfig['case_id']) > 0) {
-                if (strlen($aData[$aProjConfig['case_id']]) > 0 && isset($aISH_IDs[$aData[$sPKREDCap]])) {
-                    $aCaseTmp =explode(",",$aData[$aProjConfig['case_id']]);
-                    foreach($aCaseTmp as $CaseTmp) {
-                        $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['record'] = $aData[$sPKREDCap];
-                        // error if multiple events for case_id
-                        if (isset($aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event']) && $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event'] != $aData['redcap_event_name']) {
-                            $sLog .= 'Multiple Events for ISH-ID "'.$aISH_IDs[$aData[$sPKREDCap]].'" and Case "'.$CaseTmp.'"!'."\n";
-                            continue;
+            if (isset($aProjConfig['all_instances']) && $aProjConfig['all_instances'] == 'true') {
+                // $aCase_IDs[ish_id][case_id]['record'] => [record_id]
+                // $aCase_IDs[ish_id][case_id]['event'] => [event]
+                if (isset($aProjConfig['case_id']) && strlen($aProjConfig['case_id']) > 0) {
+                    if (strlen($aData[$aProjConfig['case_id']]) > 0 && isset($aISH_IDs[$aData[$sPKREDCap]])) {
+                        $aCaseTmp =explode(",",$aData[$aProjConfig['case_id']]);
+                        foreach($aCaseTmp as $CaseTmp) {
+                            $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['record'] = $aData[$sPKREDCap];
+                            // error if multiple events for case_id
+                            if (isset($aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event']) && $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event'] != $aData['redcap_event_name']) {
+                                $sLog .= 'Multiple Events for ISH-ID "'.$aISH_IDs[$aData[$sPKREDCap]].'" and Case "'.$CaseTmp.'"!'."\n";
+                                continue;
+                            }
+                            $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event'] = $aData['redcap_event_name'];
                         }
-                        $aCase_IDs[$aISH_IDs[$aData[$sPKREDCap]]][trim(ltrim($CaseTmp,'0'))]['event'] = $aData['redcap_event_name'];
                     }
                 }
-            }
-
-            // get existing lab params for import of all instances
-            // $aLabParams[record_id][date] => lab data
-            if (isset($aProjConfig['redcap_instance_lab_date']) && strlen($aProjConfig['redcap_instance_lab_date']) > 0) {
-                if (strlen($aData['redcap_repeat_instance']) > 0 && strlen($aData[$aProjConfig['redcap_instance_lab_date']]) > 0) {
-                    $date = date_create($aData[$aProjConfig['redcap_instance_lab_date']]);
-                    if (is_object($date)) {
-                        $sProbeDatum = date_format($date, 'Y-m-d H:i:s');
-                        $aLabParams[$aData[$sPKREDCap]][$sProbeDatum] = $aData;
+    
+                // get existing lab params for import of all instances
+                // $aLabParams[record_id][date] => lab data
+                if (isset($aProjConfig['redcap_instance_lab_date']) && strlen($aProjConfig['redcap_instance_lab_date']) > 0) {
+                    if (strlen($aData['redcap_repeat_instance']) > 0 && strlen($aData[$aProjConfig['redcap_instance_lab_date']]) > 0) {
+                        $date = date_create($aData[$aProjConfig['redcap_instance_lab_date']]);
+                        if (is_object($date)) {
+                            $sProbeDatum = date_format($date, 'Y-m-d H:i:s');
+                            $aLabParams[$aData[$sPKREDCap]][$sProbeDatum] = $aData;
+                        }
                     }
                 }
             }
