@@ -21,7 +21,7 @@ if (is_array($aFiles)) {
                 fclose($handle2);
                 
                 // delete file
-                //unlink(DATA_DIR."/".$file);
+                unlink(DATA_DIR."/".$file);
                 
                 // extract IDs
                 $iISH_ID = trim(ltrim($aDataBlock['metadata']['patient']['identifier'][0]['value'],'0'));
@@ -160,6 +160,17 @@ if (is_array($aConfig)) {
             }
         }
 
+        // get REDCap repeating forms
+        $aREDCapRepeatingFormEvents = hih::GetRedcapRepeatingFormsEvents($sAPIToken);
+        $aRepeatingFormEvents = array();
+        if (!isset($aREDCapRepeatingFormEvents['error'])) {
+            foreach($aREDCapRepeatingFormEvents as $aFormTmp) {
+                // classic projects with repeating forms
+                if (!isset($aFormTmp['event_name'])) $aFormTmp['event_name'] = '';
+                $aRepeatingFormEvents[$aFormTmp['event_name']][$aFormTmp['form_name']] = true;
+            }
+        }
+
         // fetch REDCap data
         $aREDCapData = hih::GetRedcapData($sAPIToken,array(),array('fields' => $aREDCapFields));
         
@@ -223,18 +234,30 @@ if (is_array($aConfig)) {
                 continue;
             }
             
-            // mode=all: skip existing lab data
+            // mode=all: skip existing lab data / check for repeating instrument
             if ($sImportMode == 'all') {
                 if (strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
                     continue;
                 }
-                // explode cases by "," (multiple cases per record)
-                $aCaseTmp =explode(",",$aData[$aProjConfig['case_id']]);
+                
+                if (isset($aData['redcap_event_name'])) {
+                    $sTmpEvent = $aData['redcap_event_name'];
+                } else  {
+                    $sTmpEvent = '';
+                }
+                if (!isset($aRepeatingFormEvents[$sTmpEvent][$sRepeatInstrument])) {
+                    continue;
+                }
             }
+
+            // explode cases by "," (multiple cases per record)
+            $aCaseTmp =explode(",",$aData[$aProjConfig['case_id']]);
+
             // mode=match: only 1 case allowed!
             if ($sImportMode == 'match') {
+                $CaseTmp = array_shift($aCaseTmp);
                 $aCaseTmp = array();
-                $aCaseTmp[] = $aData[$aProjConfig['case_id']];
+                $aCaseTmp[] = $CaseTmp;
             }
 
             // loop over cases
@@ -249,7 +272,7 @@ if (is_array($aConfig)) {
     
                 // mode=all: skip event when it does not match (global setting)
                 if ($sImportMode == 'all') {                
-                    if (isset($aProjConfig['redcap_instance_event']) && isset($aEvents[$aProjConfig['redcap_instance_event']])) {
+                    if (isset($aData['redcap_event_name']) && isset($aProjConfig['redcap_instance_event']) && isset($aEvents[$aProjConfig['redcap_instance_event']])) {
                         if ($aEvents[$aProjConfig['redcap_instance_event']] != $aData['redcap_event_name']) {
                             continue;
                         }
@@ -382,11 +405,13 @@ if (is_array($aConfig)) {
             
                                     // Nächster Wert
                                     case '4':
-                                        foreach($aResults as $sDatum => $foo) {
-                                            $aTmp[$sDatum] = hih::dateDifference($aData[$aVal['redcap_visit_date']] , $sDatum);
-                                        }                    
-                                        asort($aTmp, SORT_NUMERIC);  
-                                        $aResultNew[key($aTmp)] = $aResults[key($aTmp)];
+                                        if (strlen($aVal['redcap_visit_date']) > 0) {
+                                            foreach($aResults as $sDatum => $foo) {
+                                                $aTmp[$sDatum] = hih::dateDifference($aData[$aVal['redcap_visit_date']] , $sDatum);
+                                            }                    
+                                            asort($aTmp, SORT_NUMERIC);  
+                                            $aResultNew[key($aTmp)] = $aResults[key($aTmp)];
+                                        }
                                         break;
                                 
                                     // default: first value
@@ -435,73 +460,74 @@ if (is_array($aConfig)) {
                         } // end if mode=match
                     } // end foreach($aLab                         
                 } // end foreach($aProjConfig['labcodes']
-    
-                // nothing to import => skip
-                if (count($aImp) == 0) continue;
-                            
-                /************************************************
-                // build final import array
-                /************************************************/
-                if ($sImportMode == 'all') {
-                    // sort by date (ascending)
-                    ksort($aImp);
-                    
-                    // build import array
-                    foreach($aImp as $sProbeDatum => $aTmp) {
-                        // Probedatum exists already
-                        if (isset($aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance']) && strlen($aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance']) > 0) {
-                            $iInstance = $aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance'];
-                        } else {
-                            $iInstance = 'new';
-                        }
-                        
-                        $aImp[$sPKREDCap] = $aData[$sPKREDCap];
-                        // set date
-                        $aTmp[$aProjConfig['redcap_instance_lab_date']] = $sProbeDatum;
+            } // end foreach Cases
+            
+            // nothing to import => skip
+            if (count($aImp) == 0) continue;
 
-                        // assign event
-                        if (isset($aData['redcap_event_name'])) {
-                            $aImp['redcap_event_name'] = $aData['redcap_event_name'];
-                        }
-    
-                        // assign to repeating instance
-                        $aTmp['redcap_repeat_instrument'] = $sRepeatInstrument;
-                        $aTmp['redcap_repeat_instance'] = $iInstance;
-    
-                        // set state of forms
-                        if (isset($aProjConfig['form_state'])) {
-                            $aTmp[$sRepeatInstrument.'_complete'] = intval($aProjConfig['form_state']);
-                        }
-    
-                        $aImport[] = $aTmp;
+            /************************************************
+            // build final import array
+            /************************************************/
+            if ($sImportMode == 'all') {
+                // sort by date (ascending)
+                ksort($aImp);
+
+                // build import array
+                foreach($aImp as $sProbeDatum => $aTmp) {
+                    // Probedatum exists already
+                    if (isset($aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance']) && strlen($aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance']) > 0) {
+                        $iInstance = $aLabParams[$aData[$sPKREDCap]][$sProbeDatum]['redcap_repeat_instance'];
+                    } else {
+                        $iInstance = 'new';
                     }
-                }
-                
-                if ($sImportMode == 'match') {
-                    // build import array
-                    $aImp[$sPKREDCap] = $aData[$sPKREDCap];
                     
+                    $aTmp[$sPKREDCap] = $aData[$sPKREDCap];
+                    // set date
+                    $aTmp[$aProjConfig['redcap_instance_lab_date']] = $sProbeDatum;
+
                     // assign event
                     if (isset($aData['redcap_event_name'])) {
-                        $aImp['redcap_event_name'] = $aData['redcap_event_name'];
+                        $aTmp['redcap_event_name'] = $aData['redcap_event_name'];
                     }
-                    
+
                     // assign to repeating instance
-                    if (strlen($aData['redcap_repeat_instrument']) > 0 && strlen($aData['redcap_repeat_instance']) > 0) {
-                        $aImp['redcap_repeat_instrument'] = $aData['redcap_repeat_instrument'];
-                        $aImp['redcap_repeat_instance'] = $aData['redcap_repeat_instance'];
-                    }
-                    
+                    $aTmp['redcap_repeat_instrument'] = $sRepeatInstrument;
+                    $aTmp['redcap_repeat_instance'] = $iInstance;
+
                     // set state of forms
-                    if (count($aFormComplete) > 0 && isset($aProjConfig['form_state'])) {
-                        foreach($aFormComplete as $sForm => $foo) {
-                            $aImp[$sForm.'_complete'] = intval($aProjConfig['form_state']);
-                        }
+                    if (isset($aProjConfig['form_state'])) {
+                        $aTmp[$sRepeatInstrument.'_complete'] = intval($aProjConfig['form_state']);
                     }
-        
-                    $aImport[] = $aImp;
-                }                       
-            } // end foreach Cases
+
+                    $aImport[] = $aTmp;
+                }
+            }
+            
+            if ($sImportMode == 'match') {
+                // build import array
+                $aImp[$sPKREDCap] = $aData[$sPKREDCap];
+                
+                // assign event
+                if (isset($aData['redcap_event_name'])) {
+                    $aImp['redcap_event_name'] = $aData['redcap_event_name'];
+                }
+                
+                // assign to repeating instance
+                if (isset($aData['redcap_repeat_instrument']) && strlen($aData['redcap_repeat_instrument']) > 0 && strlen($aData['redcap_repeat_instance']) > 0) {
+                    $aImp['redcap_repeat_instrument'] = $aData['redcap_repeat_instrument'];
+                    $aImp['redcap_repeat_instance'] = $aData['redcap_repeat_instance'];
+                }
+                
+                // set state of forms
+                if (count($aFormComplete) > 0 && isset($aProjConfig['form_state'])) {
+                    foreach($aFormComplete as $sForm => $foo) {
+                        $aImp[$sForm.'_complete'] = intval($aProjConfig['form_state']);
+                    }
+                }
+    
+                $aImport[] = $aImp;
+            }                       
+
         } // end foreach $aREDCapData
         
         /************************************************
