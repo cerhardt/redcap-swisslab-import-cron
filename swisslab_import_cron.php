@@ -183,7 +183,7 @@ if (is_array($aConfig)) {
         $sLog = '';
 
         // Mode: $sImportMode = 'match' | 'all'
-        if (!isset($aProjConfig['all_instances']) || $aProjConfig['all_instances'] == 'false') {
+        if (!isset($aProjConfig['import_mode']) || $aProjConfig['import_mode'] == '0') {
             $sImportMode = 'match';
         } else {
             $sImportMode = 'all';
