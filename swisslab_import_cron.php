@@ -204,8 +204,8 @@ if (is_array($aConfig)) {
             if ($sImportMode == 'all') {
                 // get existing lab params for import of all instances
                 // $aLabParams[record_id][date] => lab data
-                if (isset($aProjConfig['redcap_instance_lab_date']) && strlen($aProjConfig['redcap_instance_lab_date']) > 0) {
-                    if (strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument && strlen($aData[$aProjConfig['redcap_instance_lab_date']]) > 0) {
+                if (isset($aProjConfig['redcap_instance_lab_date']) && strlen($aProjConfig['redcap_instance_lab_date']) > 0 && strlen($aData[$aProjConfig['redcap_instance_lab_date']]) > 0) {
+                    if (isset($aData['redcap_repeat_instance']) && strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
                         $date = date_create($aData[$aProjConfig['redcap_instance_lab_date']]);
                         if (is_object($date)) {
                             $sProbeDatum = date_format($date, 'Y-m-d H:i:s');
