@@ -21,7 +21,7 @@ if (is_array($aFiles)) {
                 fclose($handle2);
                 
                 // delete file
-                unlink(DATA_DIR."/".$file);
+                //unlink(DATA_DIR."/".$file);
                 
                 // extract IDs
                 $iISH_ID = trim(ltrim($aDataBlock['metadata']['patient']['identifier'][0]['value'],'0'));
@@ -65,7 +65,10 @@ if (is_array($aFiles)) {
                         // range
                         if (isset($aResults['normwert']['untergrenzeNormalbereichZahl']) && isset($aResults['normwert']['obergrenzeNormalbereichZahl'])) {
                             $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['range'] = trim($aResults['normwert']['untergrenzeNormalbereichZahl'])."-".trim($aResults['normwert']['obergrenzeNormalbereichZahl']);
+                        } elseif (isset($aResults['normwert']['obergrenzeNormalbereichZahl'])) {
+                            $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['range'] = "<".trim($aResults['normwert']['obergrenzeNormalbereichZahl']);
                         }
+
                     }
                 }
                     
@@ -205,7 +208,7 @@ if (is_array($aConfig)) {
                 // get existing lab params for import of all instances
                 // $aLabParams[record_id][date] => lab data
                 if (isset($aProjConfig['redcap_instance_lab_date']) && strlen($aProjConfig['redcap_instance_lab_date']) > 0 && strlen($aData[$aProjConfig['redcap_instance_lab_date']]) > 0) {
-                    if (isset($aData['redcap_repeat_instance']) && strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
+                    if (isset($aData['redcap_repeat_instrument']) && strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
                         $date = date_create($aData[$aProjConfig['redcap_instance_lab_date']]);
                         if (is_object($date)) {
                             $sProbeDatum = date_format($date, 'Y-m-d H:i:s');
@@ -236,7 +239,7 @@ if (is_array($aConfig)) {
             
             // mode=all: skip existing lab data / check for repeating instrument
             if ($sImportMode == 'all') {
-                if (strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
+                if (isset($aData['redcap_repeat_instrument']) && strlen($aData['redcap_repeat_instance']) > 0 && $aData['redcap_repeat_instrument'] == $sRepeatInstrument) {
                     continue;
                 }
                 
