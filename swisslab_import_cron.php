@@ -329,6 +329,7 @@ if (is_array($aConfig)) {
                                 }
                                 $aImp[$date_db][$aVal['redcap_field']] = $fResult;
                             
+                                // _unit, _range
                                 if (strlen($fResult) > 0) {
                                     if (isset($aREDCapMeta[$aVal['redcap_field'].'_unit']) && isset($aResultsTmp['unit']) && $aREDCapMeta[$aVal['redcap_field'].'_unit']['field_type'] == 'text') {
                                         $aImp[$date_db][$aVal['redcap_field'].'_unit'] = $aResultsTmp['unit'];
@@ -444,17 +445,20 @@ if (is_array($aConfig)) {
                                 $aImp[$aVal['redcap_lab_date']] = date_format($date, 'Y-m-d H:i:s');
                             }
                             
-                            // ProVal: _unit, _range, _loinc
-                            if ($GLOBALS['CONFIG']['proval_pid'] == $iProj && strlen($fResult) > 0) {
+                            // _unit, _range
+                            if (strlen($fResult) > 0) {
                                 if (isset($aREDCapMeta[$aVal['redcap_field'].'_unit']) && isset($aResults[key($aResults)]['unit'])) {
                                     $aImp[$aVal['redcap_field'].'_unit'] = $aResults[key($aResults)]['unit'];
                                 }                
                                 if (isset($aREDCapMeta[$aVal['redcap_field'].'_range']) && isset($aResults[key($aResults)]['range'])) {
                                     $aImp[$aVal['redcap_field'].'_range'] = $aResults[key($aResults)]['range'];
                                 }                
-                                if (isset($aREDCapMeta[$aVal['redcap_field'].'_loinc']) && isset($aProvalLOINC[$aVal['redcap_field']])) {
-                                    $aImp[$aVal['redcap_field'].'_loinc'] = $aProvalLOINC[$aVal['redcap_field']];
-                                }                
+                                // ProVal: _loinc
+                                if ($GLOBALS['CONFIG']['proval_pid'] == $iProj) {
+                                    if (isset($aREDCapMeta[$aVal['redcap_field'].'_loinc']) && isset($aProvalLOINC[$aVal['redcap_field']])) {
+                                        $aImp[$aVal['redcap_field'].'_loinc'] = $aProvalLOINC[$aVal['redcap_field']];
+                                    }                
+                                }
                             }
                             
                             // forms to set status
