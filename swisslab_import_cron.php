@@ -48,9 +48,12 @@ if (is_array($aFiles)) {
                          }
                          
                         // if result is empty => get "weiteresResultat"
-                        if (trim($aResults['ergebnisZahl'] == '')) {
+                        if (strlen(trim($aResults['ergebnisZahl'])) == 0) {
                             if (isset($aResults['weiteresResultat']) && is_array($aResults['weiteresResultat'])) {
                                 $aResults = $aResults['weiteresResultat'];
+                                if (!isset($aResults['ergebnisZahl']) || strlen(trim($aResults['ergebnisZahl'])) == 0) {
+                                    continue;
+                                }
                             } else {
                                 continue;
                             }
