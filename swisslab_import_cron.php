@@ -21,7 +21,7 @@ if (is_array($aFiles)) {
                 fclose($handle2);
                 
                 // delete file
-                //unlink(DATA_DIR."/".$file);
+                unlink(DATA_DIR."/".$file);
                 
                 // extract IDs
                 $iISH_ID = trim(ltrim($aDataBlock['metadata']['patient']['identifier'][0]['value'],'0'));
@@ -70,6 +70,8 @@ if (is_array($aFiles)) {
                             $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['range'] = trim($aResults['normwert']['untergrenzeNormalbereichZahl'])."-".trim($aResults['normwert']['obergrenzeNormalbereichZahl']);
                         } elseif (isset($aResults['normwert']['obergrenzeNormalbereichZahl'])) {
                             $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['range'] = "<".trim($aResults['normwert']['obergrenzeNormalbereichZahl']);
+                        } elseif (isset($aResults['normwert']['untergrenzeNormalbereichZahl'])) {
+                            $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['range'] = ">".trim($aResults['normwert']['untergrenzeNormalbereichZahl']);
                         }
 
                     }
