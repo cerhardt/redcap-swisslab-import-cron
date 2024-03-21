@@ -82,8 +82,6 @@ if (is_array($aFiles)) {
     } // end foreach files
 } // end if is array files
 
-// no files -> return
-if (count($aLabResults) == 0) return;
 
 //======================================================================================================================================
 
@@ -93,6 +91,14 @@ $request->setUsername($GLOBALS['CONFIG']['swisslab_config_user']);
 $request->setPassword($GLOBALS['CONFIG']['swisslab_config_pw']);
 $request->execute(); 
 $aConfig = json_decode($request->getResponseBody(),true);
+
+// no data but active projects => send email 
+if (count($aLabResults) == 0 && is_array($aConfig)) {
+   mail(LOG_EMAIL, 'Swisslab Import '.IMPORT_TARGET.': missing data for import', '', "From: ".gethostname(), "-f ".gethostname());        
+}
+
+// no files -> return
+if (count($aLabResults) == 0) return;
 
 // get LOINC mappings for ProVal
 $aProvalLOINC_csv = hih::csv_to_array("proval_loinc.csv",";");
