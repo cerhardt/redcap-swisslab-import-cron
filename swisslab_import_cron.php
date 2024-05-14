@@ -110,9 +110,18 @@ foreach($aProvalLOINC_csv as $aTmp) {
 if (is_array($aConfig)) {
     foreach($aConfig as $iProj => $aProjConfig) {
         $script_start = microtime(true);
-
+        $sLog = '';
+        
+        // project logging: full or incremental
+        if (!isset($aProjConfig['full_import']) || $aProjConfig['full_import'] == 'false') {        
+            $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "a");
+        } else {
+            $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "w");
+        }
+        
         // skip if API token does not exist
         if (!isset($GLOBALS['CONFIG']['swisslab_token_'.$iProj])) {
+            $sLog .= 'No API token registered!'."\n";
             continue;
         }
         $sAPIToken = $GLOBALS['CONFIG']['swisslab_token_'.$iProj];
@@ -155,7 +164,7 @@ if (is_array($aConfig)) {
         // add record_id
         $sPKREDCap = key($aREDCapMeta);
         array_unshift($aREDCapFields,$sPKREDCap);
-        
+
         // get REDCap events
         $aREDCapEvents = hih::GetRedcapEvents($sAPIToken);
         $aEvents = array();
@@ -163,6 +172,8 @@ if (is_array($aConfig)) {
             foreach($aREDCapEvents as $aEventTmp) {
                 $aEvents[$aEventTmp['event_id']] = $aEventTmp['unique_event_name'];
             }
+        } else {
+            $sLog .= 'GetRedcapEvents Error:'.$aREDCapEvents['error']."\n";
         }
         
         // get REDCap forms/events mapping
@@ -172,6 +183,8 @@ if (is_array($aConfig)) {
             foreach($aREDCapFormEvents as $aEventTmp) {
                 $aFormEvents[$aEventTmp['form']][] = $aEventTmp['unique_event_name'];
             }
+        } else {
+            $sLog .= 'GetRedcapFormsEvents Error:'.$aREDCapFormEvents['error']."\n";
         }
 
         // get REDCap repeating forms
@@ -183,18 +196,12 @@ if (is_array($aConfig)) {
                 if (!isset($aFormTmp['event_name'])) $aFormTmp['event_name'] = '';
                 $aRepeatingFormEvents[$aFormTmp['event_name']][$aFormTmp['form_name']] = true;
             }
+        } else {
+            $sLog .= 'GetRedcapRepeatingFormsEvents Error:'.$aREDCapRepeatingFormEvents['error']."\n";
         }
 
         // fetch REDCap data
         $aREDCapData = hih::GetRedcapData($sAPIToken,array(),array('fields' => $aREDCapFields));
-        
-        // project logging: full or incremental
-        if (!isset($aProjConfig['full_import']) || $aProjConfig['full_import'] == 'false') {        
-            $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "a");
-        } else {
-            $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "w");
-        }
-        $sLog = '';
 
         // Mode: $sImportMode = 'match' | 'all'
         if (!isset($aProjConfig['import_mode']) || $aProjConfig['import_mode'] == '0') {
@@ -329,7 +336,7 @@ if (is_array($aConfig)) {
     
                                 // skip results with data in REDCap (when "full_import" is not checked)
                                 if (!isset($aProjConfig['full_import']) || $aProjConfig['full_import'] == 'false') {
-                                    if (strlen($aLabParams[$RecordID][$date_db][$aVal['redcap_field']]) > 0) continue;
+                                    if (isset($aLabParams[$aData[$sPKREDCap]][$date_db][$aVal['redcap_field']]) && strlen($aLabParams[$aData[$sPKREDCap]][$date_db][$aVal['redcap_field']]) > 0) continue;
                                 }
                     
                                 // Result
