@@ -112,19 +112,18 @@ if (is_array($aConfig)) {
         $script_start = microtime(true);
         $sLog = '';
         
+        // skip if API token does not exist
+        if (!isset($GLOBALS['CONFIG']['swisslab_token_'.$iProj])) {
+            continue;
+        }
+        $sAPIToken = $GLOBALS['CONFIG']['swisslab_token_'.$iProj];
+
         // project logging: full or incremental
         if (!isset($aProjConfig['full_import']) || $aProjConfig['full_import'] == 'false') {        
             $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "a");
         } else {
             $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "w");
         }
-        
-        // skip if API token does not exist
-        if (!isset($GLOBALS['CONFIG']['swisslab_token_'.$iProj])) {
-            $sLog .= 'No API token registered!'."\n";
-            continue;
-        }
-        $sAPIToken = $GLOBALS['CONFIG']['swisslab_token_'.$iProj];
         
         // get REDCap fields from config
         $aREDCapFieldsK = array();
@@ -139,6 +138,8 @@ if (is_array($aConfig)) {
         }
         foreach($aProjConfig['labcodes'] as $aLab) {
             foreach($aLab as $sKey => $aVal) {
+                if (strlen($sKey) == 0 || strlen($aVal['redcap_field']) == 0) continue; 
+                
                 $aREDCapFieldsK[$aVal['redcap_field']] = true;
                 if (strlen($aVal['redcap_lab_date']) > 0) {
                     $aREDCapFieldsK[$aVal['redcap_lab_date']] = true;
@@ -165,6 +166,14 @@ if (is_array($aConfig)) {
         $sPKREDCap = key($aREDCapMeta);
         array_unshift($aREDCapFields,$sPKREDCap);
 
+        // Mode: $sImportMode = 'match' | 'all'
+        if (!isset($aProjConfig['import_mode']) || $aProjConfig['import_mode'] == '0') {
+            $sImportMode = 'match';
+        } else {
+            $sImportMode = 'all';
+            $sRepeatInstrument = $aREDCapMeta[$aProjConfig['redcap_instance_lab_date']]['form_name'];            
+        }
+
         // get REDCap events
         $aREDCapEvents = hih::GetRedcapEvents($sAPIToken);
         $aEvents = array();
@@ -188,31 +197,39 @@ if (is_array($aConfig)) {
         }
 
         // get REDCap repeating forms
-        $aREDCapRepeatingFormEvents = hih::GetRedcapRepeatingFormsEvents($sAPIToken);
-        $aRepeatingFormEvents = array();
-        if (!isset($aREDCapRepeatingFormEvents['error'])) {
-            foreach($aREDCapRepeatingFormEvents as $aFormTmp) {
-                // classic projects with repeating forms
-                if (!isset($aFormTmp['event_name'])) $aFormTmp['event_name'] = '';
-                $aRepeatingFormEvents[$aFormTmp['event_name']][$aFormTmp['form_name']] = true;
+        if ($sImportMode == 'all') {
+            $aREDCapRepeatingFormEvents = hih::GetRedcapRepeatingFormsEvents($sAPIToken);
+            $aRepeatingFormEvents = array();
+            if (!isset($aREDCapRepeatingFormEvents['error'])) {
+                foreach($aREDCapRepeatingFormEvents as $aFormTmp) {
+                    // classic projects with repeating forms
+                    if (!isset($aFormTmp['event_name'])) $aFormTmp['event_name'] = '';
+                    $aRepeatingFormEvents[$aFormTmp['event_name']][$aFormTmp['form_name']] = true;
+                }
+            } else {
+                $sLog .= 'GetRedcapRepeatingFormsEvents Error:'.$aREDCapRepeatingFormEvents['error']."\n";
             }
-        } else {
-            $sLog .= 'GetRedcapRepeatingFormsEvents Error:'.$aREDCapRepeatingFormEvents['error']."\n";
         }
 
         // fetch REDCap data
         $aREDCapData = hih::GetRedcapData($sAPIToken,array(),array('fields' => $aREDCapFields));
 
-        // Mode: $sImportMode = 'match' | 'all'
-        if (!isset($aProjConfig['import_mode']) || $aProjConfig['import_mode'] == '0') {
-            $sImportMode = 'match';
-        } else {
-            $sImportMode = 'all';
-            $sRepeatInstrument = $aREDCapMeta[$aProjConfig['redcap_instance_lab_date']]['form_name'];            
-        }
+        $aISH_IDs = $aCase_IDs = $aLabParams = array();
+        
+        // mapping of date formats to import format
+        $aDateMapping = array(
+            'date_dmy' => 'Y-m-d',
+            'date_mdy' => 'Y-m-d',
+            'date_ymd' => 'Y-m-d',
+            'datetime_dmy' => 'Y-m-d H:i',
+            'datetime_mdy' => 'Y-m-d H:i',
+            'datetime_ymd' => 'Y-m-d H:i',
+            'datetime_seconds_dmy' => 'Y-m-d H:i:s',
+            'datetime_seconds_mdy' => 'Y-m-d H:i:s',
+            'datetime_seconds_ymd' => 'Y-m-d H:i:s'
+        );
         
         // loop over REDcap data
-        $aISH_IDs = $aCase_IDs = $aLabParams = array();
         foreach($aREDCapData as $aData) {
 
             // mapping $aISH_IDs[record_id] => [ish_id]
@@ -243,7 +260,7 @@ if (is_array($aConfig)) {
         }
 
         $aImport = array();
-        
+
         // loop over REDCap data
         foreach($aREDCapData as $aData) {
         
@@ -286,7 +303,16 @@ if (is_array($aConfig)) {
             foreach($aCaseTmp as $CaseTmp) {
                 
                 $iFallNr = trim(ltrim($CaseTmp,'0'));
+                // convert case_ids with 9 digits
+                if (strlen($iFallNr) == 9) {
+                    $iFallNr = substr($iFallNr, 0, -1);
+                }
+                
                 $iISH_ID = $aISH_IDs[$aData[$sPKREDCap]];
+                // convert ish_ids with 8 digits
+                if (strlen($iISH_ID) == 8) {
+                    $iISH_ID = substr($iISH_ID, 0, -1);
+                }
     
                 // no results -> skip
                 if (!isset($aLabResults[$iISH_ID][$iFallNr])) continue;
@@ -303,6 +329,9 @@ if (is_array($aConfig)) {
                 foreach($aProjConfig['labcodes'] as $aLab) {
                     foreach($aLab as $sKey => $aVal) {
     
+                        // skip if labcode or redcap_field is empty
+                        if (strlen($sKey) == 0 || strlen($aVal['redcap_field']) == 0) continue;
+                        
                         // skip field if it doesn't exist in project
                         if (!isset($aREDCapMeta[$aVal['redcap_field']])) continue;
                         
@@ -460,7 +489,12 @@ if (is_array($aConfig)) {
                             // lab date
                             if (strlen($aVal['redcap_lab_date']) > 0) {
                                 $date = date_create(key($aResults));
-                                $aImp[$aVal['redcap_lab_date']] = date_format($date, 'Y-m-d H:i:s');
+                                if (isset($aDateMapping[$aREDCapMeta[$aVal['redcap_lab_date']]['text_validation_type_or_show_slider_number']])) {
+                                    $lab_date_format = $aDateMapping[$aREDCapMeta[$aVal['redcap_lab_date']]['text_validation_type_or_show_slider_number']];
+                                } else {
+                                    $lab_date_format = 'Y-m-d H:i:s';
+                                }
+                                $aImp[$aVal['redcap_lab_date']] = date_format($date, $lab_date_format);
                             }
                             
                             // _unit, _range
@@ -472,7 +506,7 @@ if (is_array($aConfig)) {
                                     $aImp[$aVal['redcap_field'].'_range'] = $aResults[key($aResults)]['range'];
                                 }                
                                 // ProVal: _loinc
-                                if ($GLOBALS['CONFIG']['proval_pid'] == $iProj) {
+                                if (isset($GLOBALS['CONFIG']['proval_pid']) && $GLOBALS['CONFIG']['proval_pid'] == $iProj) {
                                     if (isset($aREDCapMeta[$aVal['redcap_field'].'_loinc']) && isset($aProvalLOINC[$aVal['redcap_field']])) {
                                         $aImp[$aVal['redcap_field'].'_loinc'] = $aProvalLOINC[$aVal['redcap_field']];
                                     }                
@@ -538,7 +572,7 @@ if (is_array($aConfig)) {
                 }
                 
                 // assign to repeating instance
-                if (isset($aData['redcap_repeat_instrument']) && strlen($aData['redcap_repeat_instrument']) > 0 && strlen($aData['redcap_repeat_instance']) > 0) {
+                if (isset($aData['redcap_repeat_instrument']) && strlen($aData['redcap_repeat_instance']) > 0) {
                     $aImp['redcap_repeat_instrument'] = $aData['redcap_repeat_instrument'];
                     $aImp['redcap_repeat_instance'] = $aData['redcap_repeat_instance'];
                 }
@@ -554,7 +588,7 @@ if (is_array($aConfig)) {
             }                       
 
         } // end foreach $aREDCapData
-        
+
         /************************************************
         // do the import
         /************************************************/
