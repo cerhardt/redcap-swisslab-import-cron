@@ -268,7 +268,7 @@ if (is_array($aConfig)) {
             if (strlen($aData[$aProjConfig['case_id']]) == 0) continue;
             
             if (!isset($aISH_IDs[$aData[$sPKREDCap]])) { 
-                $sLog .= "ERROR: No ISH-ID found in record ".$aData[$sPKREDCap]."\n";
+                //$sLog .= "ERROR: No ISH-ID found in record ".$aData[$sPKREDCap]."\n";
                 continue;
             }
             
