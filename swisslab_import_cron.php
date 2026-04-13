@@ -8,6 +8,16 @@ require_once (dirname(__FILE__)."/../../init.php");
 $aFiles = array_slice(scandir(DATA_DIR), 2);
 $aLabResults = array();
 
+// Read whitelist for text results
+$aWhitelist = array();
+$fp = @fopen("resultat_ergebnissest_whitelist.txt", "r");
+if ($fp) {
+    while (($buffer = fgets($fp, 4096)) !== false) {
+        $aWhitelist[trim($buffer)] = true;
+    }
+    fclose($fp);
+}
+
 if (is_array($aFiles)) {
     foreach($aFiles as $file) {
         $aTmp=explode(".",$file);
@@ -26,7 +36,7 @@ if (is_array($aFiles)) {
                 // extract IDs
                 $iISH_ID = trim(ltrim($aDataBlock['metadata']['patient']['identifier'][0]['value'],'0'));
                 $iFallnr = trim(ltrim($aDataBlock['metadata']['additionalResources']['entry'][0]['resource']['identifier'][0]['value'],'0'));
-                                   
+
                 // skip if IDs are empty
                 if (strlen($iFallnr) == 0 || strlen($iISH_ID) == 0) {
                     continue;
@@ -44,7 +54,13 @@ if (is_array($aFiles)) {
                     foreach($aDataBlock['payload']['resultate'] as $aResults) {
 
                          if (!isset($aResults['ergebnisZahl'])) {
-                            continue;
+                             // text results
+                             if (isset($aResults['ergebnis']) && strlen(trim($aResults['ergebnis'])) > 0) {
+                                if (isset($aWhitelist[trim($aResults['ergebnis'])])) {
+                                    $aLabResults[$iISH_ID][$iFallnr][trim($aResults['analyt']['code'])][$sDatum]['resultText'] = trim($aResults['ergebnis']);
+                                }
+                             }
+                             continue;
                          }
                          
                         // if result is empty => get "weiteresResultat"
@@ -123,7 +139,7 @@ if (is_array($aConfig)) {
     foreach($aConfig as $iProj => $aProjConfig) {
         $script_start = microtime(true);
         $sLog = '';
-        
+
         // skip if API token does not exist
         if (!isset($GLOBALS['CONFIG']['swisslab_token_'.$iProj])) {
             continue;
@@ -136,7 +152,7 @@ if (is_array($aConfig)) {
         } else {
             $handle = fopen(dirname(__FILE__).'/logs/swisslab_import_pid'.$iProj.'.txt', "w");
         }
-        
+
         // get REDCap fields from config
         $aREDCapFieldsK = $aDateFields = array();
         if (isset($aProjConfig['ish_id']) && strlen($aProjConfig['ish_id']) > 0) {
@@ -267,7 +283,7 @@ if (is_array($aConfig)) {
             $aProjConfig['tolerance'] = '0';
         }
 
-        $aImport = array();
+        $aImport = $aOut = $aHeader = array();
 
         // loop over REDCap data
         foreach($aREDCapData as $aData) {
@@ -289,7 +305,7 @@ if (is_array($aConfig)) {
             $aCaseTmp =explode(",",$aData[$aProjConfig['case_id']]);
 
             // loop over cases and fetch LabResults
-            $aImp = $aFormComplete = $aLabResults2 = array();
+            $aImp = $aLabResults2 = array();
             foreach($aCaseTmp as $CaseTmp) {
                 
                 $iFallNr = trim(ltrim($CaseTmp,'0'));
@@ -306,10 +322,10 @@ if (is_array($aConfig)) {
 
                 // merge LabResults of multiple cases
                 if (isset($aLabResults[$iISH_ID][$iFallNr])) {
-                    $aLabResults2 = array_merge_recursive($aLabResults2,$aLabResults[$iISH_ID][$iFallNr]);
+                    $aLabResults2 = array_replace_recursive($aLabResults2,$aLabResults[$iISH_ID][$iFallNr]);
                 }
             } // end for each cases
-            
+
             // skip if LabResults are empty
             if (count($aLabResults2) == 0) continue;
 
@@ -353,7 +369,7 @@ if (is_array($aConfig)) {
 
                     // skip if there are no results for LabCode
                     if (count($aResults) == 0) continue;
-    
+
                     /************************************************
                     Lab results are available for Case / Labcode      
                     /************************************************/
@@ -480,12 +496,23 @@ if (is_array($aConfig)) {
                         }
 
                         // Result
-                        $fResult = $aResultsTmp['result'];
-                        // number_comma_decimal validation
-                        if (strpos($aREDCapMeta[$aVal['redcap_field']]['text_validation_type_or_show_slider_number'],"comma") !== false) {
-                            $fResult = str_replace(".",",",$fResult);
+                        $fResult = '';
+                        if (isset($aVal['textresults']) && $aVal['textresults'] == '1') {
+                            if (!isset($aResultsTmp['resultText'])) {
+                                continue;
+                            }
+                            $aImp[$sFormName][$sProbeDatum][$aVal['redcap_field']] = $aResultsTmp['resultText'];
+                        } else {
+                            if (!isset($aResultsTmp['result'])) {
+                                continue;
+                            }
+                            $fResult = $aResultsTmp['result'];
+                            // number_comma_decimal validation
+                            if (strpos($aREDCapMeta[$aVal['redcap_field']]['text_validation_type_or_show_slider_number'], "comma") !== false) {
+                                $fResult = str_replace(".", ",", $fResult);
+                            }
+                            $aImp[$sFormName][$sProbeDatum][$aVal['redcap_field']] = $fResult;
                         }
-                        $aImp[$sFormName][$sProbeDatum][$aVal['redcap_field']] = $fResult;
 
                         // lab date
                         if (strlen($aVal['redcap_lab_date']) > 0) {
@@ -512,12 +539,7 @@ if (is_array($aConfig)) {
                                 $aImp[$sFormName][$sProbeDatum][$aVal['redcap_field'].'_loinc'] = $aProvalLOINC[$aVal['redcap_field']];
                             }                
                         }
-                    }                            
-                    
-                    // forms to set status
-                    $aFormComplete[$aREDCapMeta[$aVal['redcap_field']]['form_name']] = true;
-                    
-
+                    }     
                 } // end foreach($aLab)                         
             } // end foreach($aProjConfig['labcodes'])
             
@@ -527,11 +549,11 @@ if (is_array($aConfig)) {
             /************************************************
             // build final import array
             /************************************************/
-            // sort by date (ascending)
-            ksort($aImp);
 
             // build import array
             foreach($aImp as $sFormName => $aImp2) {
+                // sort by date (ascending)
+                ksort($aImp2);
                 foreach($aImp2 as $sProbeDatum => $aTmp) {
 
                     $aTmp[$sPKREDCap] = $aData[$sPKREDCap];
@@ -539,6 +561,11 @@ if (is_array($aConfig)) {
                     // assign event
                     if (isset($aData['redcap_event_name'])) {
                         $aTmp['redcap_event_name'] = $sEvent;
+                    }
+
+                    // set state of forms
+                    if (isset($aProjConfig['form_state'])) {
+                        $aTmp[$sFormName.'_complete'] = intval($aProjConfig['form_state']);
                     }
 
                     // assign to repeating instance
@@ -550,41 +577,100 @@ if (is_array($aConfig)) {
                         }
                         $aTmp['redcap_repeat_instrument'] = $sFormName;
                         $aTmp['redcap_repeat_instance'] = $iInstance;
+
+                        // create one dataset for each lab date
+                        $aOut[$aData[$sPKREDCap]][$sEvent][$aTmp['redcap_repeat_instrument']][] = $aTmp;
+                    } else {
+                        $iRep = '';
+                        if (isset($aRepeatingFormEvents[$sEvent][''])) {
+                            $aTmp['redcap_repeat_instrument'] = '';
+                            $iRep = $aTmp['redcap_repeat_instance'] = $aData['redcap_repeat_instance'];
+                            
+                        }
+                        // create one dataset for each event and merge multiple lab entries
+                        if (isset($aOut[$aData[$sPKREDCap]][$sEvent][''][$iRep])) {
+                            $aOut[$aData[$sPKREDCap]][$sEvent][''][$iRep] = array_merge($aOut[$aData[$sPKREDCap]][$sEvent][''][$iRep],$aTmp);
+                        } else {
+                            $aOut[$aData[$sPKREDCap]][$sEvent][''][$iRep] = $aTmp;
+                        }
                     }
 
-                    // set state of forms
-                    if (isset($aProjConfig['form_state'])) {
-                        $aTmp[$sFormName.'_complete'] = intval($aProjConfig['form_state']);
-                    }
-
-                    $aImport[] = $aTmp;
                 }
             }    
         
         } // end foreach $aREDCapData
+
+        // build final import array
+        foreach($aOut as $iPatID => $aEventOrVisitDates) {
+            foreach($aEventOrVisitDates as $sVisitDate => $aRepeatForms) {
+                foreach($aRepeatForms as $sRepeatForm => $aTmp) {
+                    foreach($aTmp as $iRepeatInstance => $aTmp2) {
+                        $aImport[] = $aTmp2;
+                    }
+                }
+            }
+        }
 
         /************************************************
         // do the import
         /************************************************/
         if (count($aImport) > 0) {
             $sLog .= print_r($aImport,true);
-            $result = hih::SaveRedcapData($sAPIToken, $aImport);
-            
-            if (!is_int($result)) {
-                $sLog .= "ERROR: ".$result."\n";
+
+            if (!isset($aProjConfig['simulate']) || $aProjConfig['simulate'] == 'false') {
+                $result = hih::SaveRedcapData($sAPIToken, $aImport);
+                if (!is_int($result)) {
+                    $sLog .= "ERROR: ".$result."\n";
+                } else {
+                    $sLog .= $result." Datensätze aktualisiert!\n";
+                }
+                if (strlen($sLog) > 0) {
+                    $script_end = microtime(true);
+                    $time = $script_end - $script_start;    
+                    fwrite($handle, "\n\n".date("Y-m-d H:i:s")."\n");
+                    fwrite($handle, "Dauer: ".round($time)."s\n");
+                    fwrite($handle, $sLog);
+                }
             } else {
-                $sLog .= $result." Datensätze aktualisiert!\n";
+                foreach($aImport as $row) {
+                    foreach($row as $field => $foo) {
+                        $aHeader[$field] = true;
+                    }
+                }
+                
+                $aHeader2 = array_keys($aHeader);
+                if (array_search('redcap_repeat_instance',$aHeader2) !== false) {
+                    unset($aHeader2[array_search('redcap_repeat_instance',$aHeader2)]);
+                    array_unshift($aHeader2, 'redcap_repeat_instance');
+                }
+                if (array_search('redcap_repeat_instrument',$aHeader2) !== false) {
+                    unset($aHeader2[array_search('redcap_repeat_instrument',$aHeader2)]);
+                    array_unshift($aHeader2, 'redcap_repeat_instrument');
+                }
+                if (array_search('redcap_event_name',$aHeader2) !== false) {
+                    unset($aHeader2[array_search('redcap_event_name',$aHeader2)]);
+                    array_unshift($aHeader2, 'redcap_event_name');
+                }
+                unset($aHeader2[array_search($sPKREDCap,$aHeader2)]);
+                array_unshift($aHeader2, $sPKREDCap);
+                
+                $handle_sim = fopen('/tmp/swisslab_import_pid'.$iProj.'_simulate.csv', "w");
+                fputcsv($handle_sim, $aHeader2, ";");
+                foreach($aImport as $row) {
+                    $Vals = array();
+                    foreach($aHeader2 as $field) {
+                      if (!isset($row[$field])) {
+                          $Vals[$field] = '';    
+                      } else {
+                          $Vals[$field] = '="'.$row[$field].'"';
+                      }
+                    } 
+                    fputcsv($handle_sim,$Vals, ";");
+                }
+                fclose($handle_sim);
+                hih::ImportFileRepository($sAPIToken, '/tmp/swisslab_import_pid'.$iProj.'_simulate.csv', 'application/csv');
             }
         }
-
-        if (strlen($sLog) > 0) {
-            $script_end = microtime(true);
-            $time = $script_end - $script_start;    
-            fwrite($handle, "\n\n".date("Y-m-d H:i:s")."\n");
-            fwrite($handle, "Dauer: ".round($time)."s\n");
-            fwrite($handle, $sLog);
-        }
-        
         fclose($handle);
 
     } // end foreach($aConfig
